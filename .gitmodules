@@ -1,0 +1,4 @@
+[submodule "openclonk"]
+	path = openclonk
+	url = https://github.com/lluchs/openclonk
+	branch = c4script-diagnostics

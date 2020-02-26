@@ -23,6 +23,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+mod c4script_sys;
+mod c4script;
+mod util;
+
 use log::{error, trace, warn};
 use lsp_server::{Connection, ErrorCode, Message, Notification, Request, RequestId, Response};
 use lsp_types::{
@@ -34,7 +38,6 @@ use std::{
     collections::HashMap,
     panic,
     process,
-    rc::Rc,
 };
 
 type Error = Box<dyn std::error::Error>;
@@ -194,17 +197,13 @@ impl App {
             DidOpenTextDocument::METHOD => {
                 let params: DidOpenTextDocumentParams = serde_json::from_value(req.params)?;
                 let text = params.text_document.text;
-                // TODO
-                //let parsed = rnix::parse(&text);
-                //self.send_diagnostics(params.text_document.uri.clone(), &text, &parsed)?;
+                self.send_diagnostics(params.text_document.uri.clone(), &text)?;
                 self.files.insert(params.text_document.uri, text);
             },
             DidChangeTextDocument::METHOD => {
                 let params: DidChangeTextDocumentParams = serde_json::from_value(req.params)?;
                 if let Some(change) = params.content_changes.into_iter().last() {
-                    // TODO
-                    //let parsed = rnix::parse(&change.text);
-                    //self.send_diagnostics(params.text_document.uri.clone(), &change.text, &parsed)?;
+                    self.send_diagnostics(params.text_document.uri.clone(), &change.text)?;
                     self.files.insert(params.text_document.uri, change.text);
                 }
             },
@@ -269,28 +268,27 @@ impl App {
         None
     }
     fn send_diagnostics(&mut self, uri: Url, code: &str) -> Result<(), Error> {
-        // TODO
-        unimplemented!()
-        //let errors = ast.errors();
-        //let mut diagnostics = Vec::with_capacity(errors.len());
-        //for err in errors {
-        //    if let ParseError::Unexpected(node) = err {
-        //        diagnostics.push(Diagnostic {
-        //            range: utils::range(code, node),
-        //            severity: Some(DiagnosticSeverity::Error),
-        //            message: err.to_string(),
-        //            ..Diagnostic::default()
-        //        });
-        //    }
-        //}
-        //self.notify(Notification::new(
-        //    "textDocument/publishDiagnostics".into(),
-        //    PublishDiagnosticsParams {
-        //        uri,
-        //        diagnostics,
-        //        version: None,
-        //    }
-        //));
-        //Ok(())
+        let mut diagnostics = Vec::new();
+        c4script::check_string(code, |severity, msg| {
+            diagnostics.push(Diagnostic {
+                // TODO: parse range
+                range: util::parse_range(&msg),
+                severity: Some(match severity {
+                    c4script::DiagnosticSeverity::Error   => DiagnosticSeverity::Error,
+                    c4script::DiagnosticSeverity::Warning => DiagnosticSeverity::Warning,
+                }),
+                message: msg,
+                ..Diagnostic::default()
+            })
+        });
+        self.notify(Notification::new(
+            "textDocument/publishDiagnostics".into(),
+            PublishDiagnosticsParams {
+                uri,
+                diagnostics,
+                version: None,
+            }
+        ));
+        Ok(())
     }
 }
