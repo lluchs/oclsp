@@ -3,6 +3,19 @@ use std::io;
 use std::io::prelude::*;
 use std::fs::File;
 use std::env;
+use std::path::PathBuf;
+
+/// Fix path to cmake-built libraries (on Windows).
+fn library_path(mut path: PathBuf) -> PathBuf {
+    if env::var("TARGET").unwrap().contains("msvc") {
+        path.push(match env::var("PROFILE").unwrap().as_str() {
+            "debug" => "Debug",
+            "release" => "RelWithDebInfo",
+            _ => unreachable!()
+        });
+    }
+    path
+}
 
 fn main() {
     let cmakelists = read_file("openclonk/CMakeLists.txt").unwrap();
@@ -43,19 +56,25 @@ fn main() {
         .file("openclonk/src/script/C4ScriptStandalone.cpp")
         .file("openclonk/src/script/C4ScriptStandaloneStubs.cpp");
 
+    if let Ok(prefix_path) = env::var("CMAKE_PREFIX_PATH") {
+        cfg.include(format!("{}/include", prefix_path));
+        println!("cargo:rustc-link-search=native={}/lib", prefix_path);
+
+	}
     if env::var("PROFILE").unwrap() == "debug" {
         cfg.define("_DEBUG", Some("1"));
     }
     cfg.compile("c4scriptstubs");
 
-    println!("cargo:rustc-link-search=native={}/build", cmake_dst.display());
-    println!("cargo:rustc-link-search=native={}/build/thirdparty/blake2", cmake_dst.display());
+    println!("cargo:rustc-link-search=native={}", library_path(cmake_dst.join("build")).display());
+    println!("cargo:rustc-link-search=native={}", library_path(cmake_dst.join("build/thirdparty/blake2")).display());
     println!("cargo:rustc-link-lib=static=libc4script");
     println!("cargo:rustc-link-lib=static=libmisc");
     println!("cargo:rustc-link-lib=static=blake2");
     println!("cargo:rustc-link-lib=z");
 
     if env::var("TARGET").unwrap().contains("windows") {
+        println!("cargo:rustc-link-lib=ucrtd");
         println!("cargo:rustc-link-lib=winmm");
     }
 
