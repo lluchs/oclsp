@@ -25,7 +25,6 @@
 
 mod c4script_sys;
 mod c4script;
-mod util;
 
 use log::{error, trace, warn};
 use lsp_server::{Connection, ErrorCode, Message, Notification, Request, RequestId, Response};
@@ -269,10 +268,13 @@ impl App {
     }
     fn send_diagnostics(&mut self, uri: Url, code: &str) -> Result<(), Error> {
         let mut diagnostics = Vec::new();
-        c4script::check_string(code, |severity, msg| {
+        c4script::check_string(code, |severity, msg, pos| {
             diagnostics.push(Diagnostic {
-                // TODO: parse range
-                range: util::parse_range(&msg),
+                range: if let Some(p) = pos {
+                    p.to_range()
+                } else {
+                    Range::default()
+                },
                 severity: Some(match severity {
                     c4script::DiagnosticSeverity::Error   => DiagnosticSeverity::Error,
                     c4script::DiagnosticSeverity::Warning => DiagnosticSeverity::Warning,
